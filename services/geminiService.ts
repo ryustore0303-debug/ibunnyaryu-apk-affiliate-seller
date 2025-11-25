@@ -1,28 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
 
-// Daftar 10 API Key untuk rotasi (Load Balancing)
-const API_KEYS = [
-  "AIzaSyDk3UfhugolNoV9WCCGOjbPkAtQOFV_9",
-  "AIzaSyB6odJJOSFFkvEU08aETUxNUydPghu-s2Q",
-  "AIzaSyBZe2mped-YrKrYLQ8wlx-Ed1BdFRXXalI",
-  "AIzaSyC_WC6d6etIwckmLPbvpd4sPjqZGKiid5c",
-  "AIzaSyAZ6TToxMzrKDodMiDQX7VD-MH3iiH2170",
-  "AIzaSyAPZ96vdc6deu4YOaHwI5ZjRStbzk0d3tk",
-  "AIzaSyDlU9BsuQy4iZM6HTv8ipZMj4vmTBa1I1c",
-  "AIzaSyD2HQGI13g2m5ObhLrk7Z3yf5TKIZkidHI",
-  "AIzaSyDD1Dr7GJ4SuQbXOxRBrfw7gy-t7c2nER8",
-  "AIzaSyC08nL-vwft5-qAw7PGqdj2-3TsZB68IJA"
-];
-
-/**
- * Helper untuk mengambil API Key secara acak dari daftar.
- * Ini membantu menghindari Rate Limit dengan mendistribusikan request ke 10 key berbeda.
- */
-const getRandomKey = () => {
-  const randomIndex = Math.floor(Math.random() * API_KEYS.length);
-  return API_KEYS[randomIndex];
-};
-
 /**
  * Helper to read a file as Base64.
  */
@@ -53,15 +30,14 @@ export const fileToBase64 = (file: File): Promise<string> => {
  */
 export const generateImagenImage = async (
   prompt: string, 
-  productImages: File[], // Changed to array
+  productImages: File[], 
   refImageFile?: File | null,
   logoFile?: File | null,
   faceFile?: File | null
 ): Promise<string> => {
   try {
-    // Initialize the client with a RANDOM key for each request
-    const activeKey = getRandomKey();
-    const ai = new GoogleGenAI({ apiKey: activeKey });
+    // Initialize the client with the API key from environment variables
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     const parts: any[] = [];
 
