@@ -170,7 +170,13 @@ const App: React.FC = () => {
       } catch (err: any) {
         console.error(err);
         // CRITICAL: Capture the REAL error message here
-        const errorMessage = err?.message || 'Gagal Memuat';
+        let errorMessage = err?.message || 'Gagal Memuat';
+        
+        // Add helpful hint for Quota error
+        if (errorMessage.includes('429') || errorMessage.includes('Quota')) {
+           errorMessage = "Limit API Habis (429). Pastikan Anda menggunakan 10 Project Google Cloud yang BERBEDA, bukan 10 key di 1 project.";
+        }
+        
         return { ...imgPlaceholder, isLoading: false, error: errorMessage };
       }
     });

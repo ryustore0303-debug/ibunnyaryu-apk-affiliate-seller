@@ -20,10 +20,10 @@ export const fileToBase64 = (file: File): Promise<string> => {
 };
 
 /**
- * Helper to get a random API key from the list.
- * STRICTLY uses VITE_API_KEYS from environment variables.
+ * Helper to get ALL API keys as an array.
+ * Reads from VITE_API_KEYS environment variable.
  */
-const getRandomApiKey = (): string => {
+const getApiKeys = (): string[] => {
   // Access the environment variable injected by Vite/Vercel
   const keysString = import.meta.env.VITE_API_KEYS;
   
@@ -38,19 +38,23 @@ const getRandomApiKey = (): string => {
     throw new Error("VITE_API_KEYS variable is empty. Please check your Vercel settings.");
   }
 
-  // Randomly select one key for load balancing
-  const randomIndex = Math.floor(Math.random() * keys.length);
-  return keys[randomIndex];
+  return keys;
+};
+
+/**
+ * Shuffle array logic to randomize start order
+ */
+const shuffleArray = (array: string[]) => {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
 };
 
 /**
  * Generates an image using the Gemini Flash Image model.
- * @param prompt The text prompt for image generation.
- * @param productImages Array of main product images (max 3).
- * @param refImageFile Optional background reference image.
- * @param logoFile Optional logo image.
- * @param faceFile Optional face reference image (for Model mode).
- * @returns Base64 string of the generated image.
+ * Uses strict sequential rotation strategy for API keys to handle 429 errors.
  */
 export const generateImagenImage = async (
   prompt: string, 
@@ -62,7 +66,7 @@ export const generateImagenImage = async (
   
   const parts: any[] = [];
 
-  // 1. Add Main Product Images (Loop through array)
+  // 1. Add Main Product Images
   if (productImages && productImages.length > 0) {
     for (const img of productImages) {
       const base64Data = await fileToBase64(img);
@@ -75,7 +79,7 @@ export const generateImagenImage = async (
     }
   }
 
-  // 2. Add Reference Image (if exists)
+  // 2. Add Reference Image
   if (refImageFile) {
     const base64Data = await fileToBase64(refImageFile);
     parts.push({
@@ -86,7 +90,7 @@ export const generateImagenImage = async (
     });
   }
 
-  // 3. Add Logo Image (if exists)
+  // 3. Add Logo Image
   if (logoFile) {
     const base64Data = await fileToBase64(logoFile);
     parts.push({
@@ -97,7 +101,7 @@ export const generateImagenImage = async (
     });
   }
 
-  // 4. Add Face Image (if exists)
+  // 4. Add Face Image
   if (faceFile) {
     const base64Data = await fileToBase64(faceFile);
     parts.push({
@@ -111,30 +115,29 @@ export const generateImagenImage = async (
   // 5. Add the text prompt
   parts.push({ text: prompt });
 
-  const maxRetries = 3; // Try up to 3 different keys
+  // --- ROTATION STRATEGY ---
+  // 1. Get all keys
+  let keys = getApiKeys();
+  
+  // 2. Shuffle them once so we don't always start with Key #1 (Distribution)
+  keys = shuffleArray(keys);
+
   let lastError: any;
 
-  // INTELLIGENT KEY ROTATION LOOP
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    // Pick a NEW key for every attempt/retry
-    let activeKey: string;
-    try {
-      activeKey = getRandomApiKey();
-    } catch (e: any) {
-      throw new Error(e.message);
-    }
-
+  // 3. Loop through keys sequentially. If one fails, try the next.
+  for (let i = 0; i < keys.length; i++) {
+    const activeKey = keys[i];
     const ai = new GoogleGenAI({ apiKey: activeKey });
 
     try {
-      // console.log(`Attempt ${attempt + 1} using key...`); 
+      // console.log(`Attempt ${i + 1}/${keys.length} using key ending in ...${activeKey.slice(-4)}`);
       
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: { parts },
       });
 
-      // Iterate through parts to find the generated image
+      // Success? Extract image.
       if (response.candidates?.[0]?.content?.parts) {
         for (const part of response.candidates[0].content.parts) {
           if (part.inlineData && part.inlineData.data) {
@@ -142,28 +145,37 @@ export const generateImagenImage = async (
           }
         }
         
-        // Check for text refusal
+        // Check for text refusal (Safety filters often return text)
         const textPart = response.candidates[0].content.parts.find(p => p.text);
         if (textPart && textPart.text) {
-          throw new Error(`AI Refusal: ${textPart.text.substring(0, 150)}...`);
+           // If it's a safety refusal, switching keys won't help. Throw immediately.
+           throw new Error(`AI Refusal: ${textPart.text.substring(0, 150)}...`);
         }
       }
       throw new Error("No image data returned from API.");
 
     } catch (error: any) {
-      console.warn(`Error on attempt ${attempt + 1}:`, error.message);
+      // console.warn(`Key ${i+1} failed:`, error.message);
       lastError = error;
+
+      const msg = error.message || '';
       
-      // If error is related to Quota (429) or Server (500), try next key.
-      const isRetryable = true; 
-      
-      if (isRetryable && attempt < maxRetries) {
-         await new Promise(resolve => setTimeout(resolve, 800)); // Small delay
-         continue; // Try loop again with a NEW KEY
+      // CRITICAL: Decide if we should retry with next key
+      // Retry on: 429 (Quota), 5xx (Server Error), or Network Error
+      const isQuotaError = msg.includes('429') || msg.includes('Quota') || msg.includes('RESOURCE_EXHAUSTED');
+      const isServerError = msg.includes('500') || msg.includes('503') || msg.includes('Overloaded');
+      const isFetchError = msg.includes('fetch') || msg.includes('network');
+
+      if (isQuotaError || isServerError || isFetchError) {
+         // Continue loop to use NEXT key
+         continue; 
       }
-      break; // Stop loop if max retries reached
+      
+      // If it's a 400 (Bad Request) or Safety Block, don't retry other keys, it's useless.
+      break; 
     }
   }
 
+  // If we exit the loop, it means all keys failed
   throw lastError;
 };
