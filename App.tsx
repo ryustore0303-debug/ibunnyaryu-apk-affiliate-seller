@@ -114,53 +114,62 @@ const App: React.FC = () => {
           promptText += "Professional studio lighting, 8k resolution, hyper-realistic, highly detailed texture.";
         } 
         else if (mode === AppMode.MODEL) {
-           // Main Instruction - Hyper Realism Focus
-           promptText += "Professional High-End Fashion Photography. ";
+           // --- REVISED STRICT MODEL PROMPT ---
+           promptText += "STRICT INSTRUCTION: Professional High-End Fashion Photography. ";
            
-           // Pose and Background Variation for this specific index
+           // Pose and Background Variation
            const specificPose = randomModelPoses[index];
            const specificBg = randomModelBackgrounds[index];
 
-           if (formData.productImages.length > 1) {
-              promptText += `Task: Create a seamless and cohesive composition featuring ALL ${formData.productImages.length} uploaded products. The products should be worn, held, or interacting with the model in a natural way. `;
-           } else {
-              promptText += "Task: The model is interacting with the uploaded product naturally. ";
-           }
+           // Product Integration
+           promptText += `Task: Create a seamless composition featuring the uploaded product(s). `;
+           promptText += "CRITICAL: The product must be PHYSICALLY INTEGRATED. If clothing, it must drape/stretch realistically. No 'cutout' effect. ";
 
-           // ANTI-CUTOUT / REALISM INSTRUCTIONS
-           promptText += "CRITICAL: The product must be PHYSICALLY INTEGRATED into the scene. It must react to the environment's lighting, casting accurate shadows on the model's body and receiving shadows from the model. If the product is clothing, it must drape, fold, and stretch realistically over the body. If held, the hands must show weight distribution and realistic grip pressure. NO 'sticker' or 'cutout' effect. The grain, resolution, and color grading of the product must perfectly match the model. ";
-
-           // Pose & Framing
-           promptText += `Pose & Action: ${specificPose} The model's pose must complement the product. Framing: Full body or 3/4 shot (do not cut off head). `;
-           
-           // Visual Style & Location & Background
-           promptText += `Visual Style: ${formData.visualStyle} aesthetic. Location: ${formData.location}. Background Details: ${specificBg} `;
-
-           // Model Definition
+           // --- STRICT MODEL TYPE LOGIC ---
            if (formData.modelType === 'Manekin Kain') {
-             promptText += "Subject: A high-quality flexible cloth mannequin (ghost mannequin style but with form). The mannequin should have a fabric texture body, no realistic human skin, but posable and fluid like a human. ";
+             // FORCE MANNEQUIN
+             promptText += "SUBJECT TYPE: GHOST MANNEQUIN / CLOTH MANNEQUIN. ";
+             promptText += "The product must be displayed on a neutral, headless, flexible fabric mannequin. ";
+             promptText += "NEGATIVE PROMPT: NO HUMAN SKIN. NO REALISTIC FACES. NO EYES. NO HAIR. NO HUMAN MODELS. ";
+             promptText += "Focus entirely on the 3D form and fit of the product on the dummy/mannequin. ";
            } else {
-             // Use manual input for age, fallback to 'young adult' if somehow empty
+             // FORCE HUMAN - GENDER STRICTNESS
+             const isMale = formData.gender === 'Pria';
+             const genderString = isMale ? "MALE (MAN)" : "FEMALE (WOMAN)";
+             
+             promptText += `SUBJECT TYPE: REALISTIC ${genderString} MODEL. `;
+             
+             if (isMale) {
+                promptText += "IMPORTANT: The model MUST be a MAN. Masculine physique, male facial features, male styling. ";
+                promptText += "NEGATIVE PROMPT: DO NOT GENERATE A FEMALE MODEL. Do not generate long feminine hair. ";
+             } else {
+                promptText += "IMPORTANT: The model MUST be a WOMAN. Feminine physique. ";
+                promptText += "NEGATIVE PROMPT: DO NOT GENERATE A MALE MODEL. ";
+             }
+
+             // Age
              const ageDesc = formData.ageRange ? formData.ageRange : 'young adult';
-             
-             promptText += `Subject: A realistic ${formData.gender} model, approximate age: ${ageDesc}. `;
-             
-             // Hijab logic
-             if (formData.gender !== 'Pria' && formData.hijab && formData.hijab !== 'Non Hijab') {
-               promptText += `Model is wearing a ${formData.hijab} that matches the outfit style. `;
-             } else if (formData.gender !== 'Pria') {
-                promptText += "Model is not wearing a hijab. Hair styled naturally. ";
+             promptText += `Approximate age: ${ageDesc}. `;
+
+             // Hijab Logic (Only for Female)
+             if (!isMale && formData.hijab && formData.hijab !== 'Non Hijab') {
+               promptText += `Model is wearing a ${formData.hijab} that matches the outfit. `;
+             } else if (!isMale) {
+                promptText += "Model is NOT wearing a hijab. Hair styled naturally. ";
+             }
+
+             // Face Swap Logic
+             if (formData.faceImage) {
+               promptText += "FACE SWAP: The model's face MUST match the provided reference face image exactly. ";
+               faceImage = formData.faceImage;
+             } else {
+               promptText += "Model should have a naturally beautiful, Indonesian look with realistic skin texture. ";
              }
            }
 
-           // Face Logic (Critical)
-           if (formData.faceImage) {
-             promptText += "FACE SWAP REQUIREMENT: The model's face MUST match the provided reference face image exactly. Perform a seamless high-quality face swap/integration. Match skin tone, lighting angle, and facial expression to the pose. The head-to-body connection must be flawless.";
-             faceImage = formData.faceImage;
-           } else if (formData.modelType === 'Manusia Asli') {
-             promptText += "Model should have a naturally beautiful, Indonesian look with realistic skin texture. ";
-           }
-
+           // Framing & Scene
+           promptText += `Pose: ${specificPose} `;
+           promptText += `Visual Style: ${formData.visualStyle} aesthetic. Location: ${formData.location}. Background: ${specificBg} `;
            promptText += "Final output: Editorial fashion magazine quality, 8k, highly detailed.";
         }
 
@@ -176,36 +185,30 @@ const App: React.FC = () => {
         if (errorMessage.includes('limit: 0')) {
            errorMessage = "⚠️ LAYANAN BELUM AKTIF. Anda harus mengaktifkan 'Generative Language API' di Google Cloud Console untuk Project Anda.";
         } else if (errorMessage.includes('429') || errorMessage.includes('Quota') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
-           // Fixed generic message
-           errorMessage = "Limit Kuota Habis (429). API Key Anda sedang sibuk. Coba lagi beberapa saat.";
+           errorMessage = "⚠️ Limit Kuota Habis (429). Sistem sedang sibuk, silakan coba beberapa saat lagi.";
+        } else if (errorMessage.includes('Refusal')) {
+           errorMessage = "⚠️ Gambar ditolak oleh sistem keamanan AI (Safety Filter). Coba ganti prompt atau gambar.";
         }
-        
-        return { ...imgPlaceholder, isLoading: false, error: errorMessage };
+
+        return { ...imgPlaceholder, error: errorMessage, isLoading: false };
       }
     });
 
-    try {
-      const results = await Promise.all(promises);
-      setImages(results);
-    } catch (e) {
-      console.error(e);
-      setError("Terjadi kesalahan saat memproses gambar.");
-    } finally {
-      setIsGenerating(false);
-    }
+    const resolvedImages = await Promise.all(promises);
+    setImages(resolvedImages);
+    setIsGenerating(false);
   };
 
   const handleReset = () => {
     setFormData(INITIAL_FORM_DATA);
     setImages([]);
     setError(null);
-    setResetKey(prev => prev + 1); // Increment key to force re-render of PromptForm (clearing file inputs)
+    setResetKey(prev => prev + 1); // Force re-render inputs
   };
 
   return (
-    <div className="max-w-7xl mx-auto md:p-8 p-4">
-      {/* Header */}
-      <header className="glass sticky top-0 z-50 rounded-2xl mb-8 p-4 flex justify-between items-center">
+    <div className="min-h-screen p-4 md:p-8">
+      <header className="glass sticky top-0 z-50 rounded-2xl mb-8 p-4 flex justify-between items-center max-w-7xl mx-auto backdrop-blur-md">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-pink-500 to-violet-600 flex items-center justify-center shadow-lg shadow-pink-500/20">
             <Heart className="text-white w-6 h-6" />
@@ -223,12 +226,10 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        {/* Left Column: Config */}
         <section className="lg:col-span-5 space-y-6">
-          <GlassCard className="relative">
+          <GlassCard className="min-h-[600px]">
             <div className="absolute top-0 right-0 w-64 h-64 bg-pink-600/20 rounded-full blur-[100px] pointer-events-none"></div>
             
             <div className="relative z-10">
@@ -237,7 +238,7 @@ const App: React.FC = () => {
               </h2>
 
               <ModeSelector currentMode={mode} onSelectMode={setMode} />
-              
+
               <PromptForm 
                 key={resetKey}
                 mode={mode} 
@@ -252,18 +253,17 @@ const App: React.FC = () => {
           </GlassCard>
         </section>
 
-        {/* Right Column: Gallery */}
         <section className="lg:col-span-7">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Live Gallery</h3>
-            {!isGenerating && images.length > 0 && (
-              <span className="text-[10px] px-2 py-1 bg-green-500/20 text-green-400 rounded border border-green-500/30">SELESAI</span>
+            {images.length > 0 && !isGenerating && (
+              <span className="text-[10px] px-2 py-1 bg-green-500/20 text-green-400 rounded border border-green-500/30">
+                SELESAI
+              </span>
             )}
           </div>
 
-          <div className="max-h-[800px] overflow-y-auto custom-scrollbar pr-2">
-            <ImageGallery images={images} isGenerating={isGenerating} />
-          </div>
+          <ImageGallery images={images} isGenerating={isGenerating} />
         </section>
       </main>
     </div>
