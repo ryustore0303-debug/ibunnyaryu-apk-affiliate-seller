@@ -31,8 +31,12 @@ const getApiKeys = (): string[] => {
     throw new Error("API Keys not configured. Please add 'VITE_API_KEYS' in your Vercel Environment Variables settings.");
   }
 
-  // Split by comma, trim whitespace, and filter empty strings
-  const keys = keysString.split(',').map(k => k.trim()).filter(k => k.length > 0);
+  // Split by comma OR newline (regex: /[,\n]+/) to handle both formats robustly
+  // Trim whitespace and filter empty strings
+  const keys = keysString.split(/[,\n]+/).map(k => k.trim()).filter(k => k.length > 0);
+  
+  // Debug Log (Visible in Browser Console F12)
+  console.log(`[System] Load Balancing Status: ${keys.length} API Keys detected.`);
   
   if (keys.length === 0) {
     throw new Error("VITE_API_KEYS variable is empty. Please check your Vercel settings.");
@@ -130,7 +134,7 @@ export const generateImagenImage = async (
     const ai = new GoogleGenAI({ apiKey: activeKey });
 
     try {
-      // console.log(`Attempt ${i + 1}/${keys.length} using key ending in ...${activeKey.slice(-4)}`);
+      console.log(`[Attempt ${i + 1}/${keys.length}] Trying key ending in ...${activeKey.slice(-4)}`);
       
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
@@ -155,7 +159,7 @@ export const generateImagenImage = async (
       throw new Error("No image data returned from API.");
 
     } catch (error: any) {
-      // console.warn(`Key ${i+1} failed:`, error.message);
+      console.warn(`Key ...${activeKey.slice(-4)} failed:`, error.message);
       lastError = error;
 
       const msg = error.message || '';
