@@ -172,9 +172,11 @@ const App: React.FC = () => {
         // CRITICAL: Capture the REAL error message here
         let errorMessage = err?.message || 'Gagal Memuat';
         
-        // Add helpful hint for Quota error
-        if (errorMessage.includes('429') || errorMessage.includes('Quota')) {
-           errorMessage = "Limit API Habis (429). Pastikan Anda menggunakan 10 Project Google Cloud yang BERBEDA, bukan 10 key di 1 project.";
+        // Specific Error Parsing
+        if (errorMessage.includes('limit: 0')) {
+           errorMessage = "⚠️ LAYANAN BELUM AKTIF. Anda harus mengaktifkan 'Generative Language API' di Google Cloud Console untuk ke-10 Project Anda agar API Key bisa bekerja.";
+        } else if (errorMessage.includes('429') || errorMessage.includes('Quota') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
+           errorMessage = "Limit Kuota Habis (429). Semua 10 API Key Anda sedang sibuk atau habis kuota hari ini.";
         }
         
         return { ...imgPlaceholder, isLoading: false, error: errorMessage };
