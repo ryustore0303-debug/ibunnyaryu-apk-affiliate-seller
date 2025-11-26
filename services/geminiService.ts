@@ -20,6 +20,30 @@ export const fileToBase64 = (file: File): Promise<string> => {
 };
 
 /**
+ * Helper to get a random API Key from the environment variable list.
+ * Expects VITE_API_KEYS to be a comma-separated string.
+ */
+const getRandomApiKey = (): string => {
+  const keysString = import.meta.env.VITE_API_KEYS || "";
+  
+  if (!keysString) {
+    console.error("VITE_API_KEYS is missing in environment variables!");
+    throw new Error("API Keys not configured.");
+  }
+
+  // Split by comma and trim whitespace
+  const keys = keysString.split(',').map(k => k.trim()).filter(k => k.length > 0);
+
+  if (keys.length === 0) {
+    throw new Error("No valid API Keys found.");
+  }
+
+  // Pick random key
+  const randomIndex = Math.floor(Math.random() * keys.length);
+  return keys[randomIndex];
+};
+
+/**
  * Generates an image using the Gemini Flash Image model.
  * @param prompt The text prompt for image generation.
  * @param productImages Array of main product images (max 3).
@@ -36,8 +60,11 @@ export const generateImagenImage = async (
   faceFile?: File | null
 ): Promise<string> => {
   try {
-    // Initialize the client with the API key from environment variables
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // Get a random key for load balancing
+    const activeKey = getRandomApiKey();
+    
+    // Initialize the client with the random key
+    const ai = new GoogleGenAI({ apiKey: activeKey });
 
     const parts: any[] = [];
 
