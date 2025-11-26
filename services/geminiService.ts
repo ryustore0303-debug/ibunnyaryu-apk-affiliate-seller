@@ -57,7 +57,7 @@ const shuffleArray = (array: string[]) => {
 };
 
 /**
- * Generates an image using the Gemini Flash Image model.
+ * Generates an image using the Imagen 3 model.
  * Uses strict sequential rotation strategy for API keys to handle 429 errors.
  */
 export const generateImagenImage = async (
@@ -136,8 +136,11 @@ export const generateImagenImage = async (
     try {
       console.log(`[Attempt ${i + 1}/${keys.length}] Trying key ending in ...${activeKey.slice(-4)}`);
       
+      // Delay sedikit agar tidak dianggap spamming cepat oleh Google
+      if (i > 0) await new Promise(r => setTimeout(r, 1000));
+
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
+        model: 'imagen-3.0-generate-001', // Gunakan Imagen 3 yang stabil untuk gambar
         contents: { parts },
       });
 
