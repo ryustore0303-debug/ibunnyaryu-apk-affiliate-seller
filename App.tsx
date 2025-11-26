@@ -174,9 +174,10 @@ const App: React.FC = () => {
         
         // Specific Error Parsing
         if (errorMessage.includes('limit: 0')) {
-           errorMessage = "⚠️ LAYANAN BELUM AKTIF. Anda harus mengaktifkan 'Generative Language API' di Google Cloud Console untuk ke-10 Project Anda agar API Key bisa bekerja.";
+           errorMessage = "⚠️ LAYANAN BELUM AKTIF. Anda harus mengaktifkan 'Generative Language API' di Google Cloud Console untuk Project Anda.";
         } else if (errorMessage.includes('429') || errorMessage.includes('Quota') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
-           errorMessage = "Limit Kuota Habis (429). Semua 10 API Key Anda sedang sibuk atau habis kuota hari ini.";
+           // Fixed generic message
+           errorMessage = "Limit Kuota Habis (429). API Key Anda sedang sibuk. Coba lagi beberapa saat.";
         }
         
         return { ...imgPlaceholder, isLoading: false, error: errorMessage };

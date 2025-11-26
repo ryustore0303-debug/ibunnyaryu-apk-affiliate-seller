@@ -36,7 +36,7 @@ const getApiKeys = (): string[] => {
   const keys = keysString.split(/[,\n]+/).map(k => k.trim()).filter(k => k.length > 0);
   
   // Debug Log (Visible in Browser Console F12)
-  console.log(`[System] Load Balancing Status: ${keys.length} API Keys detected.`);
+  console.log(`[System] Detected ${keys.length} API Keys available in environment.`);
   
   if (keys.length === 0) {
     throw new Error("API_KEY variable is empty.");
@@ -132,9 +132,10 @@ export const generateImagenImage = async (
   for (let i = 0; i < keys.length; i++) {
     const activeKey = keys[i];
     const ai = new GoogleGenAI({ apiKey: activeKey });
+    const maskedKey = `...${activeKey.slice(-4)}`;
 
     try {
-      console.log(`[Attempt ${i + 1}/${keys.length}] Trying key ending in ...${activeKey.slice(-4)}`);
+      console.log(`[Attempt ${i + 1}/${keys.length}] Requesting with key ${maskedKey}`);
       
       // Delay sedikit agar tidak dianggap spamming cepat oleh Google
       if (i > 0) await new Promise(r => setTimeout(r, 1000));
@@ -149,6 +150,7 @@ export const generateImagenImage = async (
       if (response.candidates?.[0]?.content?.parts) {
         for (const part of response.candidates[0].content.parts) {
           if (part.inlineData && part.inlineData.data) {
+            console.log(`[Success] Image generated with key ${maskedKey}`);
             return `data:image/png;base64,${part.inlineData.data}`;
           }
         }
@@ -163,7 +165,7 @@ export const generateImagenImage = async (
       throw new Error("No image data returned from API.");
 
     } catch (error: any) {
-      console.warn(`Key ...${activeKey.slice(-4)} failed:`, error.message);
+      console.warn(`[Fail] Key ${maskedKey} error:`, error.message);
       lastError = error;
 
       const msg = error.message || '';
