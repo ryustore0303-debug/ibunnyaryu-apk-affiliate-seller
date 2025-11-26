@@ -21,6 +21,7 @@ export const fileToBase64 = (file: File): Promise<string> => {
 
 /**
  * Generates an image using the Gemini 2.5 Flash Image model.
+ * Includes automatic API Key rotation to handle rate limits.
  */
 export const generateImagenImage = async (
   prompt: string, 
@@ -81,8 +82,20 @@ export const generateImagenImage = async (
   // 5. Add the text prompt
   parts.push({ text: prompt });
 
-  // Initialize the client using process.env.API_KEY directly.
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // --- API KEY ROTATION LOGIC ---
+  // Get keys from env, split by comma or newline, trim whitespace, remove empty strings
+  const envKeys = process.env.API_KEY || "";
+  const keys = envKeys.split(/[,\n]+/).map(k => k.trim()).filter(k => k.length > 0);
+
+  if (keys.length === 0) {
+    throw new Error("API_KEY not found in environment variables.");
+  }
+
+  // Pick a random key from the list to distribute load
+  const activeKey = keys[Math.floor(Math.random() * keys.length)];
+  
+  // Initialize the client using the selected key
+  const ai = new GoogleGenAI({ apiKey: activeKey });
 
   try {
     const response = await ai.models.generateContent({
@@ -107,7 +120,7 @@ export const generateImagenImage = async (
     throw new Error("No image data returned from API.");
 
   } catch (error: any) {
-    console.warn(`API error:`, error.message);
+    console.warn(`API error (Key ending in ...${activeKey.slice(-4)}):`, error.message);
     throw error;
   }
 };
