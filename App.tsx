@@ -167,9 +167,11 @@ const App: React.FC = () => {
         // Pass the prompt AND the product image ARRAY and optional ref/logo/face images to the service
         const url = await generateImagenImage(promptText, formData.productImages, refImage, logoImage, faceImage);
         return { ...imgPlaceholder, url, isLoading: false };
-      } catch (err) {
+      } catch (err: any) {
         console.error(err);
-        return { ...imgPlaceholder, isLoading: false, error: 'Failed' };
+        // CRITICAL: Capture the REAL error message here
+        const errorMessage = err?.message || 'Gagal Memuat';
+        return { ...imgPlaceholder, isLoading: false, error: errorMessage };
       }
     });
 

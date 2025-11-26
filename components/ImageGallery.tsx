@@ -30,8 +30,9 @@ const ImageGallery: React.FC<ImageGalleryProps> = ({ images, isGenerating }) => 
               <span className="text-[10px] text-gray-500">Antrian #{index + 1}</span>
             </div>
           ) : img.error ? (
-            <div className="w-full h-full bg-red-500/5 rounded-2xl border border-red-500/20 flex flex-col items-center justify-center p-4 text-center">
-              <span className="text-xs text-red-400">Gagal Memuat</span>
+            <div className="w-full h-full bg-red-500/5 rounded-2xl border border-red-500/20 flex flex-col items-center justify-center p-4 text-center overflow-auto">
+              <span className="text-xs text-red-400 font-bold mb-1">Gagal Memuat</span>
+              <span className="text-[10px] text-red-300/70">{img.error}</span>
             </div>
           ) : (
             <div className="relative w-full h-full rounded-2xl overflow-hidden border border-white/10 shadow-lg">

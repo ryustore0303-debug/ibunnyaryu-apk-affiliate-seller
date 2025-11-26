@@ -20,28 +20,6 @@ export const fileToBase64 = (file: File): Promise<string> => {
 };
 
 /**
- * Helper to get a random API key from the environment variable.
- * Expects VITE_API_KEYS to be a comma-separated string of keys.
- */
-const getRandomApiKey = (): string => {
-  const keysString = import.meta.env.VITE_API_KEYS;
-  if (!keysString) {
-    throw new Error("API Keys not configured. Please set VITE_API_KEYS in Vercel Environment Variables.");
-  }
-  
-  // Split by comma and trim whitespace
-  const keys = keysString.split(',').map(k => k.trim()).filter(k => k.length > 0);
-  
-  if (keys.length === 0) {
-    throw new Error("No valid API keys found in VITE_API_KEYS.");
-  }
-
-  // Pick a random key
-  const randomIndex = Math.floor(Math.random() * keys.length);
-  return keys[randomIndex];
-};
-
-/**
  * Generates an image using the Gemini Flash Image model.
  * @param prompt The text prompt for image generation.
  * @param productImages Array of main product images (max 3).
@@ -57,79 +35,102 @@ export const generateImagenImage = async (
   logoFile?: File | null,
   faceFile?: File | null
 ): Promise<string> => {
-  try {
-    // Get a random key for load balancing
-    const activeKey = getRandomApiKey();
-    const ai = new GoogleGenAI({ apiKey: activeKey });
+  // Coding Guidelines: The API key must be obtained exclusively from the environment variable process.env.API_KEY.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-    const parts: any[] = [];
+  const parts: any[] = [];
 
-    // 1. Add Main Product Images (Loop through array)
-    if (productImages && productImages.length > 0) {
-      for (const img of productImages) {
-        const base64Data = await fileToBase64(img);
-        parts.push({
-          inlineData: {
-            mimeType: img.type,
-            data: base64Data
-          }
-        });
-      }
-    }
-
-    // 2. Add Reference Image (if exists)
-    if (refImageFile) {
-      const base64Data = await fileToBase64(refImageFile);
+  // 1. Add Main Product Images (Loop through array)
+  if (productImages && productImages.length > 0) {
+    for (const img of productImages) {
+      const base64Data = await fileToBase64(img);
       parts.push({
         inlineData: {
-          mimeType: refImageFile.type,
+          mimeType: img.type,
           data: base64Data
         }
       });
     }
-
-    // 3. Add Logo Image (if exists)
-    if (logoFile) {
-      const base64Data = await fileToBase64(logoFile);
-      parts.push({
-        inlineData: {
-          mimeType: logoFile.type,
-          data: base64Data
-        }
-      });
-    }
-
-    // 4. Add Face Image (if exists)
-    if (faceFile) {
-      const base64Data = await fileToBase64(faceFile);
-      parts.push({
-        inlineData: {
-          mimeType: faceFile.type,
-          data: base64Data
-        }
-      });
-    }
-
-    // 5. Add the text prompt
-    parts.push({ text: prompt });
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: { parts },
-    });
-
-    // Iterate through parts to find the generated image
-    if (response.candidates?.[0]?.content?.parts) {
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData && part.inlineData.data) {
-          return `data:image/png;base64,${part.inlineData.data}`;
-        }
-      }
-    }
-
-    throw new Error("No image data returned from API.");
-  } catch (error) {
-    console.error("Gemini API Error:", error);
-    throw error;
   }
+
+  // 2. Add Reference Image (if exists)
+  if (refImageFile) {
+    const base64Data = await fileToBase64(refImageFile);
+    parts.push({
+      inlineData: {
+        mimeType: refImageFile.type,
+        data: base64Data
+      }
+    });
+  }
+
+  // 3. Add Logo Image (if exists)
+  if (logoFile) {
+    const base64Data = await fileToBase64(logoFile);
+    parts.push({
+      inlineData: {
+        mimeType: logoFile.type,
+        data: base64Data
+      }
+    });
+  }
+
+  // 4. Add Face Image (if exists)
+  if (faceFile) {
+    const base64Data = await fileToBase64(faceFile);
+    parts.push({
+      inlineData: {
+        mimeType: faceFile.type,
+        data: base64Data
+      }
+    });
+  }
+
+  // 5. Add the text prompt
+  parts.push({ text: prompt });
+
+  const retryCount = 3;
+  let lastError: any;
+
+  for (let attempt = 0; attempt < retryCount; attempt++) {
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: { parts },
+      });
+
+      // Iterate through parts to find the generated image
+      if (response.candidates?.[0]?.content?.parts) {
+        for (const part of response.candidates[0].content.parts) {
+          if (part.inlineData && part.inlineData.data) {
+            return `data:image/png;base64,${part.inlineData.data}`;
+          }
+        }
+        
+        // If we are here, it means we got a response but NO image data.
+        const textPart = response.candidates[0].content.parts.find(p => p.text);
+        if (textPart && textPart.text) {
+          throw new Error(`AI Refusal: ${textPart.text.substring(0, 100)}...`);
+        }
+      }
+      throw new Error("No image data returned from API.");
+
+    } catch (error: any) {
+      console.error(`Gemini API Error (Attempt ${attempt + 1}):`, error);
+      lastError = error;
+      
+      // Retry only on specific errors or generic fetch errors
+      const isRetryable = error.status === 429 || error.status >= 500 || error.message?.includes('fetch failed');
+      
+      if (isRetryable && attempt < retryCount - 1) {
+         // Exponential backoff
+         await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
+         continue;
+      }
+      
+      break;
+    }
+  }
+
+  throw lastError;
 };
