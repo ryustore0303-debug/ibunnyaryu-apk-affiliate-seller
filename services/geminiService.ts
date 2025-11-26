@@ -21,17 +21,17 @@ export const fileToBase64 = (file: File): Promise<string> => {
 
 /**
  * Helper to get ALL API keys as an array.
- * Reads from VITE_API_KEYS environment variable.
+ * Reads from process.env.API_KEY environment variable.
  */
 const getApiKeys = (): string[] => {
-  // Access the environment variable injected by Vite/Vercel
-  const keysString = import.meta.env.VITE_API_KEYS;
+  // Access the environment variable standard
+  const keysString = process.env.API_KEY;
   
   if (!keysString) {
-    throw new Error("API Keys not configured. Please add 'VITE_API_KEYS' in your Vercel Environment Variables settings.");
+    throw new Error("API Key not found. Please set 'API_KEY' environment variable.");
   }
 
-  // Split by comma OR newline (regex: /[,\n]+/) to handle both formats robustly
+  // Split by comma OR newline to handle both formats robustly for rotation
   // Trim whitespace and filter empty strings
   const keys = keysString.split(/[,\n]+/).map(k => k.trim()).filter(k => k.length > 0);
   
@@ -39,7 +39,7 @@ const getApiKeys = (): string[] => {
   console.log(`[System] Load Balancing Status: ${keys.length} API Keys detected.`);
   
   if (keys.length === 0) {
-    throw new Error("VITE_API_KEYS variable is empty. Please check your Vercel settings.");
+    throw new Error("API_KEY variable is empty.");
   }
 
   return keys;
@@ -57,7 +57,7 @@ const shuffleArray = (array: string[]) => {
 };
 
 /**
- * Generates an image using the Imagen 3 model.
+ * Generates an image using the Gemini 2.5 Flash Image model.
  * Uses strict sequential rotation strategy for API keys to handle 429 errors.
  */
 export const generateImagenImage = async (
@@ -140,8 +140,9 @@ export const generateImagenImage = async (
       if (i > 0) await new Promise(r => setTimeout(r, 1000));
 
       const response = await ai.models.generateContent({
-        model: 'imagen-3.0-generate-001', // Gunakan Imagen 3 yang stabil untuk gambar
+        model: 'gemini-2.5-flash-image', // Use the robust Gemini Flash Image model
         contents: { parts },
+        // Note: responseMimeType is not supported for nano banana series (flash-image)
       });
 
       // Success? Extract image.
