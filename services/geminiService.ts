@@ -20,6 +20,28 @@ export const fileToBase64 = (file: File): Promise<string> => {
 };
 
 /**
+ * Helper to get a random API key from the environment variable.
+ * Expects VITE_API_KEYS to be a comma-separated string of keys.
+ */
+const getRandomApiKey = (): string => {
+  const keysString = import.meta.env.VITE_API_KEYS;
+  if (!keysString) {
+    throw new Error("API Keys not configured. Please set VITE_API_KEYS in Vercel Environment Variables.");
+  }
+  
+  // Split by comma and trim whitespace
+  const keys = keysString.split(',').map(k => k.trim()).filter(k => k.length > 0);
+  
+  if (keys.length === 0) {
+    throw new Error("No valid API keys found in VITE_API_KEYS.");
+  }
+
+  // Pick a random key
+  const randomIndex = Math.floor(Math.random() * keys.length);
+  return keys[randomIndex];
+};
+
+/**
  * Generates an image using the Gemini Flash Image model.
  * @param prompt The text prompt for image generation.
  * @param productImages Array of main product images (max 3).
@@ -36,8 +58,9 @@ export const generateImagenImage = async (
   faceFile?: File | null
 ): Promise<string> => {
   try {
-    // Initialize the client with the API key from process.env
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // Get a random key for load balancing
+    const activeKey = getRandomApiKey();
+    const ai = new GoogleGenAI({ apiKey: activeKey });
 
     const parts: any[] = [];
 
