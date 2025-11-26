@@ -20,6 +20,30 @@ export const fileToBase64 = (file: File): Promise<string> => {
 };
 
 /**
+ * Helper to get a random API key from the list.
+ * STRICTLY uses VITE_API_KEYS from environment variables.
+ */
+const getRandomApiKey = (): string => {
+  // Access the environment variable injected by Vite/Vercel
+  const keysString = import.meta.env.VITE_API_KEYS;
+  
+  if (!keysString) {
+    throw new Error("API Keys not configured. Please add 'VITE_API_KEYS' in your Vercel Environment Variables settings.");
+  }
+
+  // Split by comma, trim whitespace, and filter empty strings
+  const keys = keysString.split(',').map(k => k.trim()).filter(k => k.length > 0);
+  
+  if (keys.length === 0) {
+    throw new Error("VITE_API_KEYS variable is empty. Please check your Vercel settings.");
+  }
+
+  // Randomly select one key for load balancing
+  const randomIndex = Math.floor(Math.random() * keys.length);
+  return keys[randomIndex];
+};
+
+/**
  * Generates an image using the Gemini Flash Image model.
  * @param prompt The text prompt for image generation.
  * @param productImages Array of main product images (max 3).
@@ -35,9 +59,7 @@ export const generateImagenImage = async (
   logoFile?: File | null,
   faceFile?: File | null
 ): Promise<string> => {
-  // Coding Guidelines: The API key must be obtained exclusively from the environment variable process.env.API_KEY.
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
+  
   const parts: any[] = [];
 
   // 1. Add Main Product Images (Loop through array)
@@ -89,11 +111,24 @@ export const generateImagenImage = async (
   // 5. Add the text prompt
   parts.push({ text: prompt });
 
-  const retryCount = 3;
+  const maxRetries = 3; // Try up to 3 different keys
   let lastError: any;
 
-  for (let attempt = 0; attempt < retryCount; attempt++) {
+  // INTELLIGENT KEY ROTATION LOOP
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // Pick a NEW key for every attempt/retry
+    let activeKey: string;
     try {
+      activeKey = getRandomApiKey();
+    } catch (e: any) {
+      throw new Error(e.message);
+    }
+
+    const ai = new GoogleGenAI({ apiKey: activeKey });
+
+    try {
+      // console.log(`Attempt ${attempt + 1} using key...`); 
+      
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: { parts },
@@ -107,28 +142,26 @@ export const generateImagenImage = async (
           }
         }
         
-        // If we are here, it means we got a response but NO image data.
+        // Check for text refusal
         const textPart = response.candidates[0].content.parts.find(p => p.text);
         if (textPart && textPart.text) {
-          throw new Error(`AI Refusal: ${textPart.text.substring(0, 100)}...`);
+          throw new Error(`AI Refusal: ${textPart.text.substring(0, 150)}...`);
         }
       }
       throw new Error("No image data returned from API.");
 
     } catch (error: any) {
-      console.error(`Gemini API Error (Attempt ${attempt + 1}):`, error);
+      console.warn(`Error on attempt ${attempt + 1}:`, error.message);
       lastError = error;
       
-      // Retry only on specific errors or generic fetch errors
-      const isRetryable = error.status === 429 || error.status >= 500 || error.message?.includes('fetch failed');
+      // If error is related to Quota (429) or Server (500), try next key.
+      const isRetryable = true; 
       
-      if (isRetryable && attempt < retryCount - 1) {
-         // Exponential backoff
-         await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
-         continue;
+      if (isRetryable && attempt < maxRetries) {
+         await new Promise(resolve => setTimeout(resolve, 800)); // Small delay
+         continue; // Try loop again with a NEW KEY
       }
-      
-      break;
+      break; // Stop loop if max retries reached
     }
   }
 
