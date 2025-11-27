@@ -190,6 +190,8 @@ const App: React.FC = () => {
            errorMessage = "⚠️ Gambar ditolak oleh sistem keamanan AI (Safety Filter). Coba ganti prompt atau gambar.";
         } else if (errorMessage.includes('404')) {
            errorMessage = "⚠️ Model Error (404). Sedang perbaikan sistem, coba refresh.";
+        } else if (errorMessage.includes('MISSING_KEYS')) {
+           errorMessage = "⚠️ SETUP ERROR: Masukkan API Key di Settings Vercel (Key: VITE_API_KEY, Value: Key Anda).";
         }
 
         return { ...imgPlaceholder, error: errorMessage, isLoading: false };
@@ -221,7 +223,7 @@ const App: React.FC = () => {
             </h1>
             <div className="flex items-center gap-2 mt-1">
                <span className="text-[10px] text-green-400 font-bold font-mono tracking-widest uppercase bg-green-900/30 px-2 py-0.5 rounded border border-green-500/30">
-                 ✅ V6.1 (BUILD FIX)
+                 ✅ V8.0 (ULTIMATE FIX)
                </span>
             </div>
           </div>

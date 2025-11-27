@@ -7,11 +7,15 @@ export default defineConfig(({ mode }) => {
   // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
   const env = loadEnv(mode, '.', '');
   
+  // Prioritize API_KEY, fallback to VITE_API_KEY, fallback to empty string
+  const finalApiKey = env.API_KEY || env.VITE_API_KEY || '';
+  
   return {
     plugins: [react()],
     define: {
       // PENTING: Ini menyuntikkan variable environment dari server/build ke client browser
-      'process.env.API_KEY': JSON.stringify(env.API_KEY)
+      // Menggunakan JSON.stringify untuk memastikan nilai string yang valid atau "undefined" string
+      'process.env.API_KEY': JSON.stringify(finalApiKey)
     }
   }
 })

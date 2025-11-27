@@ -26,7 +26,7 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * Generates an image using the Gemini 2.5 Flash Image model.
- * Includes TRUE AUTOMATIC API KEY ROTATION (Smart Retry).
+ * Handles API Key retrieval dynamically from multiple sources.
  */
 export const generateImagenImage = async (
   prompt: string, 
@@ -36,84 +36,112 @@ export const generateImagenImage = async (
   faceFile?: File | null
 ): Promise<string> => {
   
-  // 0. FORCE NEW VERSION DETECTOR
-  console.log("Using Service V6.1 - Smart Rotation Active");
+  // LOGIC: Retrieve API Key safely - V8.0 ULTIMATE FIX
+  // 1. Prioritize standard Vite Environment Variable (Works best on Vercel)
+  // @ts-ignore
+  let activeKey = import.meta.env.VITE_API_KEY;
 
-  const parts: any[] = [];
-
-  // 1. Add Main Product Images
-  if (productImages && productImages.length > 0) {
-    for (const img of productImages) {
-      const base64Data = await fileToBase64(img);
-      parts.push({
-        inlineData: {
-          mimeType: img.type,
-          data: base64Data
-        }
-      });
-    }
+  // 2. Fallback to process.env injection (if configured in vite define)
+  if (!activeKey || activeKey === 'undefined') {
+    // @ts-ignore
+    activeKey = process.env.API_KEY;
   }
-
-  // 2. Add Reference Image
-  if (refImageFile) {
-    const base64Data = await fileToBase64(refImageFile);
-    parts.push({
-      inlineData: {
-        mimeType: refImageFile.type,
-        data: base64Data
-      }
-    });
-  }
-
-  // 3. Add Logo Image
-  if (logoFile) {
-    const base64Data = await fileToBase64(logoFile);
-    parts.push({
-      inlineData: {
-        mimeType: logoFile.type,
-        data: base64Data
-      }
-    });
-  }
-
-  // 4. Add Face Image
-  if (faceFile) {
-    const base64Data = await fileToBase64(faceFile);
-    parts.push({
-      inlineData: {
-        mimeType: faceFile.type,
-        data: base64Data
-      }
-    });
-  }
-
-  // 5. Add the text prompt
-  parts.push({ text: prompt });
-
-  // --- API KEY ROTATION LOGIC (SMART LOOP) ---
-  const envKeys = process.env.API_KEY || "";
-  const keys = envKeys.split(/[,\n]+/).map(k => k.trim()).filter(k => k.length > 0);
-
-  if (keys.length === 0) {
-    throw new Error("API_KEY not found in environment variables.");
-  }
-
-  // Shuffle keys to distribute load initially
-  const shuffledKeys = [...keys].sort(() => 0.5 - Math.random());
   
-  let lastError: Error | null = null;
+  // 3. Fallback to older Vite access method
+  if (!activeKey || activeKey === 'undefined') {
+    // @ts-ignore
+    activeKey = import.meta.env.API_KEY;
+  }
 
-  // LOOP through available keys
-  for (const apiKey of shuffledKeys) {
+  // Debugging Log (Safe, shows only last 4 chars)
+  if (activeKey) {
+     const safeLog = activeKey.length > 10 ? `...${activeKey.slice(-4)}` : 'INVALID';
+     console.log(`[V8.0-FIX] API Key found: ${safeLog}`);
+  } else {
+     console.error("[V8.0-FIX] No API Key found in any environment variable.");
+  }
+
+  // Final Validation
+  if (!activeKey || activeKey.length < 10) {
+    console.error("CRITICAL ERROR: No valid API Key found in environment variables.");
+    throw new Error("MISSING_KEYS");
+  }
+
+  // Handle multiple keys rotation (comma separated)
+  const keys = activeKey.split(/[,\n]+/).map(k => k.trim()).filter(k => k.length > 0);
+  
+  // Use Smart Loop for Retries
+  const maxKeyRetries = keys.length;
+  let lastError: any = null;
+
+  for (let i = 0; i < maxKeyRetries; i++) {
+    const currentKey = keys[i];
+    
+    // Mask key for logging safety (show last 4 chars)
+    const maskedKey = `...${currentKey.slice(-4)}`;
+    console.log(`[V8.0-FIX] Attempting with Key #${i+1} (${maskedKey})`);
+
     try {
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = new GoogleGenAI({ apiKey: currentKey });
       
+      const parts: any[] = [];
+
+      // 1. Add Main Product Images
+      if (productImages && productImages.length > 0) {
+        for (const img of productImages) {
+          const base64Data = await fileToBase64(img);
+          parts.push({
+            inlineData: {
+              mimeType: img.type,
+              data: base64Data
+            }
+          });
+        }
+      }
+
+      // 2. Add Reference Image
+      if (refImageFile) {
+        const base64Data = await fileToBase64(refImageFile);
+        parts.push({
+          inlineData: {
+            mimeType: refImageFile.type,
+            data: base64Data
+          }
+        });
+      }
+
+      // 3. Add Logo Image
+      if (logoFile) {
+        const base64Data = await fileToBase64(logoFile);
+        parts.push({
+          inlineData: {
+            mimeType: logoFile.type,
+            data: base64Data
+          }
+        });
+      }
+
+      // 4. Add Face Image
+      if (faceFile) {
+        const base64Data = await fileToBase64(faceFile);
+        parts.push({
+          inlineData: {
+            mimeType: faceFile.type,
+            data: base64Data
+          }
+        });
+      }
+
+      // 5. Add the text prompt
+      parts.push({ text: prompt });
+
+      // Call API
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image', // Fixed Model
+        model: 'gemini-2.5-flash-image',
         contents: { parts },
       });
 
-      // Success? Extract image.
+      // Extract image
       if (response.candidates?.[0]?.content?.parts) {
         for (const part of response.candidates[0].content.parts) {
           if (part.inlineData && part.inlineData.data) {
@@ -121,33 +149,28 @@ export const generateImagenImage = async (
           }
         }
         
-        // Check for text refusal
         const textPart = response.candidates[0].content.parts.find((p: any) => p.text);
         if (textPart && textPart.text) {
-           // If refused, don't retry other keys, it's a prompt issue.
            throw new Error(`AI Refusal: ${textPart.text.substring(0, 150)}...`);
         }
       }
       
-      // If we got here, response format was unexpected but no error thrown
       throw new Error("Empty response from AI");
 
     } catch (error: any) {
       lastError = error;
       const msg = error.message || "";
-      
-      // If error is 429 (Quota) or 503 (Server Overload), Try Next Key!
-      if (msg.includes('429') || msg.includes('Quota') || msg.includes('503') || msg.includes('RESOURCE_EXHAUSTED')) {
-        console.warn(`Key ...${apiKey.slice(-4)} exhausted. Switching to next key...`);
-        await sleep(500); // Wait 0.5s before trying next key
-        continue; // Try next key in loop
-      } else {
-        // If it's another error (like 400 Bad Request / Safety), stop retrying.
+      console.warn(`Key #${i+1} failed: ${msg}`);
+
+      // If error is NOT about Quota/Limit (e.g. Safety or Bad Request), stop trying other keys.
+      if (msg.includes('Refusal') || msg.includes('SAFETY') || msg.includes('400')) {
         throw error;
       }
+
+      // If it is 429/Quota, loop will continue to next key...
     }
   }
 
-  // If loop finishes and we still have no image
-  throw lastError || new Error("All API Keys exhausted or failed.");
+  // If all keys failed
+  throw lastError || new Error("All API keys failed or quota exhausted.");
 };
