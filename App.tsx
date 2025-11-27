@@ -221,7 +221,7 @@ const App: React.FC = () => {
             </h1>
             <div className="flex items-center gap-2 mt-1">
                <span className="text-[10px] text-green-400 font-bold font-mono tracking-widest uppercase bg-green-900/30 px-2 py-0.5 rounded border border-green-500/30">
-                 ✅ UPDATE V5.0 SUCCESS
+                 ✅ UPDATE V6.0 (FINAL FIX)
                </span>
             </div>
           </div>

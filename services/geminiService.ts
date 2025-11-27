@@ -37,7 +37,7 @@ export const generateImagenImage = async (
 ): Promise<string> => {
   
   // 0. FORCE NEW VERSION DETECTOR
-  console.log("Using Service V5.0 - Smart Rotation Active");
+  console.log("Using Service V6.0 - Smart Rotation Active");
 
   const parts: any[] = [];
 
