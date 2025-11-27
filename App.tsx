@@ -188,6 +188,8 @@ const App: React.FC = () => {
            errorMessage = "⚠️ Limit Kuota Habis (429). Sistem sedang sibuk, silakan coba beberapa saat lagi.";
         } else if (errorMessage.includes('Refusal')) {
            errorMessage = "⚠️ Gambar ditolak oleh sistem keamanan AI (Safety Filter). Coba ganti prompt atau gambar.";
+        } else if (errorMessage.includes('404')) {
+           errorMessage = "⚠️ Model Error (404). Sedang perbaikan sistem, coba refresh.";
         }
 
         return { ...imgPlaceholder, error: errorMessage, isLoading: false };
@@ -217,7 +219,11 @@ const App: React.FC = () => {
             <h1 className="text-2xl font-black tracking-tight text-white">
               ibunnyaryu <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-cyan-400">affiliate</span>
             </h1>
-            <p className="text-[10px] text-gray-400 font-mono tracking-widest uppercase">PRO ENGINE • V.FINAL</p>
+            <div className="flex items-center gap-2 mt-1">
+               <span className="text-[10px] text-green-400 font-bold font-mono tracking-widest uppercase bg-green-900/30 px-2 py-0.5 rounded border border-green-500/30">
+                 ✅ UPDATE V5.0 SUCCESS
+               </span>
+            </div>
           </div>
         </div>
         <div className="hidden md:flex items-center gap-2 px-3 py-1 glass rounded-full">

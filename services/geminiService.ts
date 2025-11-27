@@ -20,8 +20,13 @@ export const fileToBase64 = (file: File): Promise<string> => {
 };
 
 /**
+ * Helper: Sleep/Delay for retries
+ */
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
  * Generates an image using the Gemini 2.5 Flash Image model.
- * Includes automatic API Key rotation to handle rate limits.
+ * Includes TRUE AUTOMATIC API KEY ROTATION (Smart Retry).
  */
 export const generateImagenImage = async (
   prompt: string, 
@@ -31,6 +36,9 @@ export const generateImagenImage = async (
   faceFile?: File | null
 ): Promise<string> => {
   
+  // 0. FORCE NEW VERSION DETECTOR
+  console.log("Using Service V5.0 - Smart Rotation Active");
+
   const parts: any[] = [];
 
   // 1. Add Main Product Images
@@ -82,8 +90,7 @@ export const generateImagenImage = async (
   // 5. Add the text prompt
   parts.push({ text: prompt });
 
-  // --- API KEY ROTATION LOGIC ---
-  // Get keys from env, split by comma or newline, trim whitespace, remove empty strings
+  // --- API KEY ROTATION LOGIC (SMART LOOP) ---
   const envKeys = process.env.API_KEY || "";
   const keys = envKeys.split(/[,\n]+/).map(k => k.trim()).filter(k => k.length > 0);
 
@@ -91,36 +98,56 @@ export const generateImagenImage = async (
     throw new Error("API_KEY not found in environment variables.");
   }
 
-  // Pick a random key from the list to distribute load
-  const activeKey = keys[Math.floor(Math.random() * keys.length)];
+  // Shuffle keys to distribute load initially
+  const shuffledKeys = [...keys].sort(() => 0.5 - Math.random());
   
-  // Initialize the client using the selected key
-  const ai = new GoogleGenAI({ apiKey: activeKey });
+  let lastError: Error | null = null;
 
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image', // Model for General Image Generation and Editing Tasks
-      contents: { parts },
-    });
+  // LOOP through available keys
+  for (const apiKey of shuffledKeys) {
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image', // Fixed Model
+        contents: { parts },
+      });
 
-    // Success? Extract image.
-    if (response.candidates?.[0]?.content?.parts) {
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData && part.inlineData.data) {
-          return `data:image/png;base64,${part.inlineData.data}`;
+      // Success? Extract image.
+      if (response.candidates?.[0]?.content?.parts) {
+        for (const part of response.candidates[0].content.parts) {
+          if (part.inlineData && part.inlineData.data) {
+            return `data:image/png;base64,${part.inlineData.data}`;
+          }
+        }
+        
+        // Check for text refusal
+        const textPart = response.candidates[0].content.parts.find((p: any) => p.text);
+        if (textPart && textPart.text) {
+           // If refused, don't retry other keys, it's a prompt issue.
+           throw new Error(`AI Refusal: ${textPart.text.substring(0, 150)}...`);
         }
       }
       
-      // Check for text refusal (Safety filters often return text)
-      const textPart = response.candidates[0].content.parts.find((p: any) => p.text);
-      if (textPart && textPart.text) {
-         throw new Error(`AI Refusal: ${textPart.text.substring(0, 150)}...`);
+      // If we got here, response format was unexpected but no error thrown
+      throw new Error("Empty response from AI");
+
+    } catch (error: any) {
+      lastError = error;
+      const msg = error.message || "";
+      
+      // If error is 429 (Quota) or 503 (Server Overload), Try Next Key!
+      if (msg.includes('429') || msg.includes('Quota') || msg.includes('503') || msg.includes('RESOURCE_EXHAUSTED')) {
+        console.warn(`Key ...${apiKey.slice(-4)} exhausted. Switching to next key...`);
+        await sleep(500); // Wait 0.5s before trying next key
+        continue; // Try next key in loop
+      } else {
+        // If it's another error (like 400 Bad Request / Safety), stop retrying.
+        throw error;
       }
     }
-    throw new Error("No image data returned from API.");
-
-  } catch (error: any) {
-    console.warn(`API error (Key ending in ...${activeKey.slice(-4)}):`, error.message);
-    throw error;
   }
+
+  // If loop finishes and we still have no image
+  throw lastError || new Error("All API Keys exhausted or failed.");
 };
