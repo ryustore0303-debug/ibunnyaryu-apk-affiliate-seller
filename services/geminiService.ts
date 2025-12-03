@@ -20,11 +20,6 @@ export const fileToBase64 = (file: File): Promise<string> => {
 };
 
 /**
- * Helper: Sleep/Delay for retries
- */
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-/**
  * Helper: Safely retrieve env vars without crashing
  */
 const getSafeEnv = (key: string): string | undefined => {
@@ -87,7 +82,7 @@ export const generateImagenImage = async (
     
     // Mask key for logging safety
     const maskedKey = `...${currentKey.slice(-4)}`;
-    console.log(`[v3.ANTI-LIMIT] Attempting with Key #${i+1} (${maskedKey})`);
+    console.log(`[v4.FAST-FAIL] Attempting with Key #${i+1} (${maskedKey})`);
 
     try {
       const ai = new GoogleGenAI({ apiKey: currentKey });
@@ -168,38 +163,22 @@ export const generateImagenImage = async (
     } catch (error: any) {
       lastError = error;
       const msg = error.message || "";
-      console.warn(`Key #${i+1} failed: ${msg}`);
+      console.warn(`[v4.FAST-FAIL] Key #${i+1} failed: ${msg}`);
       
       // Augment error object
       // @ts-ignore
       error.debugInfo = { keyHint: maskedKey, originalError: msg };
 
-      // Stop on critical errors (Safety, Auth, Bad Request)
+      // Stop on critical errors (Safety, Auth, Bad Request) that are NOT quota related
       if (msg.includes('Refusal') || msg.includes('SAFETY') || msg.includes('400') || msg.includes('403') || msg.includes('enabled')) {
         throw error;
       }
 
-      // HANDLE RATE LIMITS (429) INTELLIGENTLY
+      // HANDLE RATE LIMITS (429) -> FAST FAIL
       if (msg.includes('429') || msg.includes('Quota') || msg.includes('RESOURCE_EXHAUSTED')) {
-         
-         // Try to extract "retry in X s" from the Google error message
-         // Example: "Please retry in 54.076880736s."
-         const match = msg.match(/retry in (\d+(\.\d+)?)s/);
-         let waitTime = 10000; // Default 10s if not found
-
-         if (match && match[1]) {
-            const seconds = parseFloat(match[1]);
-            // Add 2s buffer to be safe
-            waitTime = Math.ceil(seconds * 1000) + 2000;
-            console.log(`[v3.ANTI-LIMIT] Google requested wait time: ${seconds}s. Sleeping for ${waitTime/1000}s...`);
-         } else {
-            console.log(`[v3.ANTI-LIMIT] 429 Error without specific time. Sleeping default 10s...`);
-         }
-
-         // PENTING: Kita harus menunggu SEBELUM mencoba key berikutnya.
-         // Kenapa? Karena jika key Anda berada di satu akun Google yang sama,
-         // limitnya dibagi rata. Pindah key TIDAK mereset waktu tunggu akun.
-         await sleep(waitTime);
+         console.log(`[v4.FAST-FAIL] Key #${i+1} exhausted. Switching immediately to next key (if available)...`);
+         // NO SLEEP. Just continue to next loop iteration.
+         continue; 
       }
     }
   }
