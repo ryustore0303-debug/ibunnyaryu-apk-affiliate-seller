@@ -82,7 +82,7 @@ export const generateImagenImage = async (
     
     // Mask key for logging safety
     const maskedKey = `...${currentKey.slice(-4)}`;
-    console.log(`[v4.FAST-FAIL] Attempting with Key #${i+1} (${maskedKey})`);
+    console.log(`[v5.STABLE] Attempting with Key #${i+1} (${maskedKey})`);
 
     try {
       const ai = new GoogleGenAI({ apiKey: currentKey });
@@ -163,7 +163,7 @@ export const generateImagenImage = async (
     } catch (error: any) {
       lastError = error;
       const msg = error.message || "";
-      console.warn(`[v4.FAST-FAIL] Key #${i+1} failed: ${msg}`);
+      console.warn(`[v5.STABLE] Key #${i+1} failed: ${msg}`);
       
       // Augment error object
       // @ts-ignore
@@ -174,10 +174,11 @@ export const generateImagenImage = async (
         throw error;
       }
 
-      // HANDLE RATE LIMITS (429) -> FAST FAIL
+      // HANDLE RATE LIMITS (429) -> FAST FAIL but with polite delay
       if (msg.includes('429') || msg.includes('Quota') || msg.includes('RESOURCE_EXHAUSTED')) {
-         console.log(`[v4.FAST-FAIL] Key #${i+1} exhausted. Switching immediately to next key (if available)...`);
-         // NO SLEEP. Just continue to next loop iteration.
+         console.log(`[v5.STABLE] Key #${i+1} exhausted. Waiting 1.5s before next key...`);
+         // Soft Delay to avoid instant burst spam
+         await new Promise(resolve => setTimeout(resolve, 1500));
          continue; 
       }
     }

@@ -72,16 +72,16 @@ const App: React.FC = () => {
     const randomModelPoses = getRandomPrompts(MODEL_POSES, 4);
     const randomModelBackgrounds = getRandomPrompts(MODEL_BG_VARIATIONS, 4);
 
-    // --- SEQUENTIAL EXECUTION (Fix for 429 Rate Limits) ---
+    // --- SEQUENTIAL EXECUTION (ANTI-SPAM) ---
     // Instead of Promise.all, we loop through and await one by one.
     
     for (let index = 0; index < 4; index++) {
       const currentImageId = newImages[index].id;
       
-      // COOLDOWN: Jeda 5 detik antar gambar agar tidak dideteksi spam oleh Google
+      // COOLDOWN: Jeda 8 detik (Increased for Safety) antar gambar agar tidak dideteksi spam oleh Google
       if (index > 0) {
-        console.log(`[v4.FAST-FAIL] Cooling down... waiting 5s before image #${index + 1}`);
-        await new Promise(r => setTimeout(r, 5000));
+        console.log(`[v5.STABLE] Cooling down... waiting 8s before image #${index + 1}`);
+        await new Promise(r => setTimeout(r, 8000));
       }
 
       try {
@@ -208,6 +208,8 @@ const App: React.FC = () => {
           }
         } catch (e) {}
         
+        let isQuotaError = false;
+
         if (errorMessage.includes('not enabled') || errorMessage.includes('enable') || errorMessage.includes('Precondition') || errorMessage.includes('403')) {
            setError("ACTIVATION_REQUIRED");
            setDebugInfo({ keyHint, originalError: errorMessage });
@@ -222,7 +224,8 @@ const App: React.FC = () => {
         if (errorMessage.includes('limit: 0') || errorMessage.includes('404')) {
            errorMessage = "⚠️ LAYANAN BELUM AKTIF. API Key Anda belum mengaktifkan layanan Google Generative AI.";
         } else if (errorMessage.includes('429') || errorMessage.includes('Quota') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
-           errorMessage = "⚠️ Limit Kuota Habis (429).";
+           errorMessage = "⚠️ Limit Kuota Project Habis. Stop Antrian.";
+           isQuotaError = true;
         } else if (errorMessage.includes('Refusal')) {
            errorMessage = "⚠️ Gambar ditolak oleh sistem keamanan AI.";
         } else if (errorMessage.includes('MISSING_KEYS')) {
@@ -239,6 +242,18 @@ const App: React.FC = () => {
         setImages(prev => prev.map(img => 
           img.id === currentImageId ? { ...img, error: errorMessage, isLoading: false } : img
         ));
+
+        // CIRCUIT BREAKER:
+        // Jika errornya karena KUOTA (429/Quota), JANGAN lanjutkan loop. 
+        // Stop gambar 2, 3, 4 untuk mencegah akun kena banned lebih lama.
+        if (isQuotaError) {
+          console.warn("[v5.STABLE] Quota exhausted on Image #" + (index+1) + ". Stopping queue.");
+          // Cancel remaining images
+          setImages(prev => prev.map(img => 
+            img.isLoading ? { ...img, error: "Dibatalkan (Limit Project)", isLoading: false } : img
+          ));
+          break; // STOP LOOP
+        }
       }
     }
 
@@ -266,7 +281,7 @@ const App: React.FC = () => {
             </h1>
             <div className="flex items-center gap-2 mt-1">
                <span className="text-[10px] text-green-400 font-bold font-mono tracking-widest uppercase bg-green-900/30 px-2 py-0.5 rounded border border-green-500/30">
-                 ✅ v4.FAST-FAIL (NO WAIT)
+                 ✅ v5.STABLE (ANTI-SPAM)
                </span>
             </div>
           </div>
