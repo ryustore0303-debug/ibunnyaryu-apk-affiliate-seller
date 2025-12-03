@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Heart, Settings2 } from 'lucide-react';
+import { Heart, Settings2, ExternalLink } from 'lucide-react';
 import GlassCard from './components/GlassCard';
 import ModeSelector from './components/ModeSelector';
 import PromptForm from './components/PromptForm';
@@ -30,6 +30,7 @@ const App: React.FC = () => {
   const [images, setImages] = useState<GeneratedImage[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<{keyHint: string, originalError: string} | null>(null);
   const [resetKey, setResetKey] = useState(0);
 
   const handleFormChange = (field: keyof FormData, value: any) => {
@@ -44,6 +45,7 @@ const App: React.FC = () => {
 
   const handleGenerate = async () => {
     setError(null);
+    setDebugInfo(null);
 
     // Check array length instead of single object null
     if (formData.productImages.length === 0) {
@@ -70,8 +72,12 @@ const App: React.FC = () => {
     const randomModelPoses = getRandomPrompts(MODEL_POSES, 4);
     const randomModelBackgrounds = getRandomPrompts(MODEL_BG_VARIATIONS, 4);
 
-    // Execute 4 parallel requests
-    const promises = newImages.map(async (imgPlaceholder, index) => {
+    // --- SEQUENTIAL EXECUTION (Fix for 429 Rate Limits) ---
+    // Instead of Promise.all, we loop through and await one by one.
+    
+    for (let index = 0; index < 4; index++) {
+      const currentImageId = newImages[index].id;
+      
       try {
         let promptText = "";
         let refImage: File | null = null;
@@ -173,32 +179,63 @@ const App: React.FC = () => {
            promptText += "Final output: Editorial fashion magazine quality, 8k, highly detailed.";
         }
 
-        // Pass the prompt AND the product image ARRAY and optional ref/logo/face images to the service
+        // Generate Image (Sequentially)
         const url = await generateImagenImage(promptText, formData.productImages, refImage, logoImage, faceImage);
-        return { ...imgPlaceholder, url, isLoading: false };
+        
+        // Update state specifically for this image
+        setImages(prev => prev.map(img => 
+          img.id === currentImageId ? { ...img, url, isLoading: false } : img
+        ));
+
       } catch (err: any) {
         console.error(err);
-        // CRITICAL: Capture the REAL error message here
-        let errorMessage = err?.message || 'Gagal Memuat';
         
-        // Specific Error Parsing
-        // Check for "Precondition check failed" or "service not enabled"
-        if (errorMessage.includes('limit: 0') || errorMessage.includes('Precondition') || errorMessage.includes('Not Found') || errorMessage.includes('404')) {
-           errorMessage = "⚠️ LAYANAN BELUM AKTIF. Anda harus mengaktifkan 'Generative Language API' di Google Cloud Console untuk Project Anda.";
-        } else if (errorMessage.includes('429') || errorMessage.includes('Quota') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
-           errorMessage = "⚠️ Limit Kuota Habis (429). Sistem sedang sibuk, silakan coba beberapa saat lagi.";
-        } else if (errorMessage.includes('Refusal')) {
-           errorMessage = "⚠️ Gambar ditolak oleh sistem keamanan AI (Safety Filter). Coba ganti prompt atau gambar.";
-        } else if (errorMessage.includes('MISSING_KEYS')) {
-           errorMessage = "⚠️ SETUP ERROR: API Key belum terbaca. Pastikan Environment Variable 'VITE_API_KEY' sudah ada di Vercel.";
+        // Error handling logic
+        let errorMessage = err?.message || 'Gagal Memuat';
+        const originalError = errorMessage;
+        let keyHint = "UNKNOWN";
+
+        try {
+          if (err.debugInfo) {
+             keyHint = err.debugInfo.keyHint;
+             if (err.debugInfo.originalError) errorMessage = err.debugInfo.originalError;
+          }
+        } catch (e) {}
+        
+        if (errorMessage.includes('not enabled') || errorMessage.includes('enable') || errorMessage.includes('Precondition') || errorMessage.includes('403')) {
+           setError("ACTIVATION_REQUIRED");
+           setDebugInfo({ keyHint, originalError: errorMessage });
+           // Fail specifically this image
+           setImages(prev => prev.map(img => 
+             img.id === currentImageId ? { ...img, error: "Layanan Belum Aktif", isLoading: false } : img
+           ));
+           // Break loop if service is fundamentally broken
+           break;
         }
 
-        return { ...imgPlaceholder, error: errorMessage, isLoading: false };
-      }
-    });
+        if (errorMessage.includes('limit: 0') || errorMessage.includes('404')) {
+           errorMessage = "⚠️ LAYANAN BELUM AKTIF. API Key Anda belum mengaktifkan layanan Google Generative AI.";
+        } else if (errorMessage.includes('429') || errorMessage.includes('Quota') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
+           errorMessage = "⚠️ Limit Kuota Habis (429).";
+        } else if (errorMessage.includes('Refusal')) {
+           errorMessage = "⚠️ Gambar ditolak oleh sistem keamanan AI.";
+        } else if (errorMessage.includes('MISSING_KEYS')) {
+           errorMessage = "⚠️ SETUP ERROR: API Key belum terbaca di Vercel.";
+        }
 
-    const resolvedImages = await Promise.all(promises);
-    setImages(resolvedImages);
+        // Set global error state for the first error encountered, but don't break fully if it's just one image
+        if (!error && !errorMessage.includes("Layanan Belum Aktif")) {
+           setError(errorMessage);
+           setDebugInfo({ keyHint, originalError });
+        }
+
+        // Mark this specific image as failed
+        setImages(prev => prev.map(img => 
+          img.id === currentImageId ? { ...img, error: errorMessage, isLoading: false } : img
+        ));
+      }
+    }
+
     setIsGenerating(false);
   };
 
@@ -206,6 +243,7 @@ const App: React.FC = () => {
     setFormData(INITIAL_FORM_DATA);
     setImages([]);
     setError(null);
+    setDebugInfo(null);
     setResetKey(prev => prev + 1); // Force re-render inputs
   };
 
@@ -222,7 +260,7 @@ const App: React.FC = () => {
             </h1>
             <div className="flex items-center gap-2 mt-1">
                <span className="text-[10px] text-green-400 font-bold font-mono tracking-widest uppercase bg-green-900/30 px-2 py-0.5 rounded border border-green-500/30">
-                 ✅ V9.0 (STABILITY FIX)
+                 ✅ v2.SEQUENTIAL
                </span>
             </div>
           </div>
@@ -254,8 +292,52 @@ const App: React.FC = () => {
                 onGenerate={handleGenerate}
                 onReset={handleReset}
                 isGenerating={isGenerating}
-                error={error}
+                error={null} // Handle error externally below
               />
+
+              {/* Enhanced Error Display */}
+              {error === "ACTIVATION_REQUIRED" ? (
+                <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-xl space-y-2 animate-pulse">
+                  <div className="flex items-center gap-2 text-red-400 font-bold text-sm">
+                     <Settings2 className="w-4 h-4" />
+                     LAYANAN GOOGLE BELUM AKTIF
+                  </div>
+                  <p className="text-xs text-gray-300">
+                    API Key valid, tapi layanan belum dinyalakan. Klik tombol di bawah:
+                  </p>
+                  <a 
+                    href="https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 w-full py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition-colors"
+                  >
+                    AKTIFKAN SEKARANG (ENABLE) <ExternalLink className="w-3 h-3" />
+                  </a>
+                  {debugInfo && (
+                    <div className="pt-2 border-t border-red-500/20">
+                      <p className="text-[10px] text-gray-500 font-mono">
+                        Key: ...{debugInfo.keyHint} | Err: {debugInfo.originalError.slice(0, 50)}...
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : error && (
+                <div className="mt-4 text-red-400 text-xs text-center bg-red-500/10 p-2 rounded-lg border border-red-500/20">
+                  <p className="font-bold mb-1">{error}</p>
+                  {debugInfo && (
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-[10px] text-gray-500 hover:text-gray-300 underline">
+                        Lihat Detail Teknis
+                      </summary>
+                      <div className="mt-2 text-left bg-black/30 p-2 rounded text-[10px] font-mono text-gray-400 whitespace-pre-wrap">
+                        <p>Using Key: ...{debugInfo.keyHint}</p>
+                        <p>Original Error: {debugInfo.originalError}</p>
+                      </div>
+                    </details>
+                  )}
+                </div>
+              )}
+
             </div>
           </GlassCard>
         </section>

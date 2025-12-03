@@ -61,7 +61,7 @@ export const generateImagenImage = async (
   faceFile?: File | null
 ): Promise<string> => {
   
-  // LOGIC: Retrieve API Key safely - V9.0 STABILITY FIX
+  // LOGIC: Retrieve API Key safely - v2.SEQUENTIAL
   // Prioritize VITE_API_KEY (Standard for Vercel/Vite)
   let activeKey = getSafeEnv('VITE_API_KEY');
 
@@ -73,15 +73,18 @@ export const generateImagenImage = async (
   // Debugging Log (Safe, shows only last 4 chars)
   if (activeKey) {
      const safeLog = activeKey.length > 10 ? `...${activeKey.slice(-4)}` : 'INVALID';
-     console.log(`[V9.0-FIX] API Key found: ${safeLog}`);
+     console.log(`[v2.SEQ] API Key found: ${safeLog}`);
   } else {
-     console.error("[V9.0-FIX] No API Key found in any environment variable.");
+     console.error("[v2.SEQ] No API Key found in any environment variable.");
   }
 
   // Final Validation
   if (!activeKey || activeKey.length < 10) {
     console.error("CRITICAL ERROR: No valid API Key found in environment variables.");
-    throw new Error("MISSING_KEYS");
+    const err = new Error("MISSING_KEYS");
+    // @ts-ignore
+    err.debugInfo = { keyHint: "NONE", originalError: "No Key Found" };
+    throw err;
   }
 
   // Handle multiple keys rotation (comma separated)
@@ -96,7 +99,7 @@ export const generateImagenImage = async (
     
     // Mask key for logging safety (show last 4 chars)
     const maskedKey = `...${currentKey.slice(-4)}`;
-    console.log(`[V9.0-FIX] Attempting with Key #${i+1} (${maskedKey})`);
+    console.log(`[v2.SEQ] Attempting with Key #${i+1} (${maskedKey})`);
 
     try {
       const ai = new GoogleGenAI({ apiKey: currentKey });
@@ -154,7 +157,7 @@ export const generateImagenImage = async (
 
       // Call API
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
+        model: 'gemini-2.5-flash-image', 
         contents: { parts },
       });
 
@@ -178,13 +181,22 @@ export const generateImagenImage = async (
       lastError = error;
       const msg = error.message || "";
       console.warn(`Key #${i+1} failed: ${msg}`);
+      
+      // Augment error object for UI debugging
+      // @ts-ignore
+      error.debugInfo = { keyHint: maskedKey, originalError: msg };
 
       // If error is NOT about Quota/Limit (e.g. Safety or Bad Request), stop trying other keys.
-      if (msg.includes('Refusal') || msg.includes('SAFETY') || msg.includes('400')) {
+      if (msg.includes('Refusal') || msg.includes('SAFETY') || msg.includes('400') || msg.includes('403') || msg.includes('enabled')) {
         throw error;
       }
 
-      // If it is 429/Quota, loop will continue to next key...
+      // If it is 429/Quota, we wait a bit before trying the next key
+      // This helps if keys are in different projects (but ineffective if same project, hence sequential App.tsx update is main fix)
+      if (msg.includes('429') || msg.includes('Quota')) {
+         console.log(`[v2.SEQ] Rate limit hit on Key #${i+1}. Waiting 2s before next key...`);
+         await sleep(2000); 
+      }
     }
   }
 
