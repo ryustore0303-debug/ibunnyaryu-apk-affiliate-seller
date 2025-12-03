@@ -78,6 +78,12 @@ const App: React.FC = () => {
     for (let index = 0; index < 4; index++) {
       const currentImageId = newImages[index].id;
       
+      // COOLDOWN: Jeda 5 detik antar gambar agar tidak dideteksi spam oleh Google
+      if (index > 0) {
+        console.log(`[v3.ANTI-LIMIT] Cooling down... waiting 5s before image #${index + 1}`);
+        await new Promise(r => setTimeout(r, 5000));
+      }
+
       try {
         let promptText = "";
         let refImage: File | null = null;
@@ -260,7 +266,7 @@ const App: React.FC = () => {
             </h1>
             <div className="flex items-center gap-2 mt-1">
                <span className="text-[10px] text-green-400 font-bold font-mono tracking-widest uppercase bg-green-900/30 px-2 py-0.5 rounded border border-green-500/30">
-                 ✅ v2.SEQUENTIAL
+                 ✅ v3.ANTI-LIMIT
                </span>
             </div>
           </div>

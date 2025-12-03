@@ -61,45 +61,33 @@ export const generateImagenImage = async (
   faceFile?: File | null
 ): Promise<string> => {
   
-  // LOGIC: Retrieve API Key safely - v2.SEQUENTIAL
-  // Prioritize VITE_API_KEY (Standard for Vercel/Vite)
+  // LOGIC: Retrieve API Key safely
   let activeKey = getSafeEnv('VITE_API_KEY');
 
-  // Fallback to API_KEY
   if (!activeKey) {
     activeKey = getSafeEnv('API_KEY');
   }
 
-  // Debugging Log (Safe, shows only last 4 chars)
-  if (activeKey) {
-     const safeLog = activeKey.length > 10 ? `...${activeKey.slice(-4)}` : 'INVALID';
-     console.log(`[v2.SEQ] API Key found: ${safeLog}`);
-  } else {
-     console.error("[v2.SEQ] No API Key found in any environment variable.");
-  }
-
   // Final Validation
   if (!activeKey || activeKey.length < 10) {
-    console.error("CRITICAL ERROR: No valid API Key found in environment variables.");
     const err = new Error("MISSING_KEYS");
     // @ts-ignore
-    err.debugInfo = { keyHint: "NONE", originalError: "No Key Found" };
+    err.debugInfo = { keyHint: "NONE", originalError: "No Key Found in Env" };
     throw err;
   }
 
   // Handle multiple keys rotation (comma separated)
   const keys = activeKey.split(/[,\n]+/).map(k => k.trim()).filter(k => k.length > 0);
   
-  // Use Smart Loop for Retries
   const maxKeyRetries = keys.length;
   let lastError: any = null;
 
   for (let i = 0; i < maxKeyRetries; i++) {
     const currentKey = keys[i];
     
-    // Mask key for logging safety (show last 4 chars)
+    // Mask key for logging safety
     const maskedKey = `...${currentKey.slice(-4)}`;
-    console.log(`[v2.SEQ] Attempting with Key #${i+1} (${maskedKey})`);
+    console.log(`[v3.ANTI-LIMIT] Attempting with Key #${i+1} (${maskedKey})`);
 
     try {
       const ai = new GoogleGenAI({ apiKey: currentKey });
@@ -182,20 +170,36 @@ export const generateImagenImage = async (
       const msg = error.message || "";
       console.warn(`Key #${i+1} failed: ${msg}`);
       
-      // Augment error object for UI debugging
+      // Augment error object
       // @ts-ignore
       error.debugInfo = { keyHint: maskedKey, originalError: msg };
 
-      // If error is NOT about Quota/Limit (e.g. Safety or Bad Request), stop trying other keys.
+      // Stop on critical errors (Safety, Auth, Bad Request)
       if (msg.includes('Refusal') || msg.includes('SAFETY') || msg.includes('400') || msg.includes('403') || msg.includes('enabled')) {
         throw error;
       }
 
-      // If it is 429/Quota, we wait a bit before trying the next key
-      // This helps if keys are in different projects (but ineffective if same project, hence sequential App.tsx update is main fix)
-      if (msg.includes('429') || msg.includes('Quota')) {
-         console.log(`[v2.SEQ] Rate limit hit on Key #${i+1}. Waiting 2s before next key...`);
-         await sleep(2000); 
+      // HANDLE RATE LIMITS (429) INTELLIGENTLY
+      if (msg.includes('429') || msg.includes('Quota') || msg.includes('RESOURCE_EXHAUSTED')) {
+         
+         // Try to extract "retry in X s" from the Google error message
+         // Example: "Please retry in 54.076880736s."
+         const match = msg.match(/retry in (\d+(\.\d+)?)s/);
+         let waitTime = 10000; // Default 10s if not found
+
+         if (match && match[1]) {
+            const seconds = parseFloat(match[1]);
+            // Add 2s buffer to be safe
+            waitTime = Math.ceil(seconds * 1000) + 2000;
+            console.log(`[v3.ANTI-LIMIT] Google requested wait time: ${seconds}s. Sleeping for ${waitTime/1000}s...`);
+         } else {
+            console.log(`[v3.ANTI-LIMIT] 429 Error without specific time. Sleeping default 10s...`);
+         }
+
+         // PENTING: Kita harus menunggu SEBELUM mencoba key berikutnya.
+         // Kenapa? Karena jika key Anda berada di satu akun Google yang sama,
+         // limitnya dibagi rata. Pindah key TIDAK mereset waktu tunggu akun.
+         await sleep(waitTime);
       }
     }
   }
