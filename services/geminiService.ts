@@ -25,6 +25,31 @@ export const fileToBase64 = (file: File): Promise<string> => {
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
+ * Helper: Safely retrieve env vars without crashing
+ */
+const getSafeEnv = (key: string): string | undefined => {
+  try {
+    // 1. Try import.meta.env (Vite Standard)
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
+      // @ts-ignore
+      return import.meta.env[key];
+    }
+    
+    // 2. Try process.env (Node / Vite Define)
+    // @ts-ignore
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+      // @ts-ignore
+      return process.env[key];
+    }
+  } catch (e) {
+    console.warn(`[EnvCheck] Failed to read ${key}`);
+    return undefined;
+  }
+  return undefined;
+};
+
+/**
  * Generates an image using the Gemini 2.5 Flash Image model.
  * Handles API Key retrieval dynamically from multiple sources.
  */
@@ -36,29 +61,21 @@ export const generateImagenImage = async (
   faceFile?: File | null
 ): Promise<string> => {
   
-  // LOGIC: Retrieve API Key safely - V8.0 ULTIMATE FIX
-  // 1. Prioritize standard Vite Environment Variable (Works best on Vercel)
-  // @ts-ignore
-  let activeKey = import.meta.env.VITE_API_KEY;
+  // LOGIC: Retrieve API Key safely - V9.0 STABILITY FIX
+  // Prioritize VITE_API_KEY (Standard for Vercel/Vite)
+  let activeKey = getSafeEnv('VITE_API_KEY');
 
-  // 2. Fallback to process.env injection (if configured in vite define)
-  if (!activeKey || activeKey === 'undefined') {
-    // @ts-ignore
-    activeKey = process.env.API_KEY;
-  }
-  
-  // 3. Fallback to older Vite access method
-  if (!activeKey || activeKey === 'undefined') {
-    // @ts-ignore
-    activeKey = import.meta.env.API_KEY;
+  // Fallback to API_KEY
+  if (!activeKey) {
+    activeKey = getSafeEnv('API_KEY');
   }
 
   // Debugging Log (Safe, shows only last 4 chars)
   if (activeKey) {
      const safeLog = activeKey.length > 10 ? `...${activeKey.slice(-4)}` : 'INVALID';
-     console.log(`[V8.0-FIX] API Key found: ${safeLog}`);
+     console.log(`[V9.0-FIX] API Key found: ${safeLog}`);
   } else {
-     console.error("[V8.0-FIX] No API Key found in any environment variable.");
+     console.error("[V9.0-FIX] No API Key found in any environment variable.");
   }
 
   // Final Validation
@@ -79,7 +96,7 @@ export const generateImagenImage = async (
     
     // Mask key for logging safety (show last 4 chars)
     const maskedKey = `...${currentKey.slice(-4)}`;
-    console.log(`[V8.0-FIX] Attempting with Key #${i+1} (${maskedKey})`);
+    console.log(`[V9.0-FIX] Attempting with Key #${i+1} (${maskedKey})`);
 
     try {
       const ai = new GoogleGenAI({ apiKey: currentKey });

@@ -182,16 +182,15 @@ const App: React.FC = () => {
         let errorMessage = err?.message || 'Gagal Memuat';
         
         // Specific Error Parsing
-        if (errorMessage.includes('limit: 0')) {
+        // Check for "Precondition check failed" or "service not enabled"
+        if (errorMessage.includes('limit: 0') || errorMessage.includes('Precondition') || errorMessage.includes('Not Found') || errorMessage.includes('404')) {
            errorMessage = "⚠️ LAYANAN BELUM AKTIF. Anda harus mengaktifkan 'Generative Language API' di Google Cloud Console untuk Project Anda.";
         } else if (errorMessage.includes('429') || errorMessage.includes('Quota') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
            errorMessage = "⚠️ Limit Kuota Habis (429). Sistem sedang sibuk, silakan coba beberapa saat lagi.";
         } else if (errorMessage.includes('Refusal')) {
            errorMessage = "⚠️ Gambar ditolak oleh sistem keamanan AI (Safety Filter). Coba ganti prompt atau gambar.";
-        } else if (errorMessage.includes('404')) {
-           errorMessage = "⚠️ Model Error (404). Sedang perbaikan sistem, coba refresh.";
         } else if (errorMessage.includes('MISSING_KEYS')) {
-           errorMessage = "⚠️ SETUP ERROR: Masukkan API Key di Settings Vercel (Key: VITE_API_KEY, Value: Key Anda).";
+           errorMessage = "⚠️ SETUP ERROR: API Key belum terbaca. Pastikan Environment Variable 'VITE_API_KEY' sudah ada di Vercel.";
         }
 
         return { ...imgPlaceholder, error: errorMessage, isLoading: false };
@@ -223,7 +222,7 @@ const App: React.FC = () => {
             </h1>
             <div className="flex items-center gap-2 mt-1">
                <span className="text-[10px] text-green-400 font-bold font-mono tracking-widest uppercase bg-green-900/30 px-2 py-0.5 rounded border border-green-500/30">
-                 ✅ V8.0 (ULTIMATE FIX)
+                 ✅ V9.0 (STABILITY FIX)
                </span>
             </div>
           </div>
